@@ -4,6 +4,7 @@ using System.Collections;
 using System.Linq;
 using UnityEngine;
 using Random = UnityEngine.Random;
+using static ComponentInfo;
 
 public class MeteredButton : Puzzle
 {
@@ -54,15 +55,17 @@ public class MeteredButton : Puzzle
             {"T7", "T4", "M4", "H6", "H7", "M2", "M5", "T9", "X7", "H9"}
         };
 
-    public MeteredButton(CruelModkitScript Module, int ModuleID, ComponentInfo Info, bool Vanilla, byte Components) : base(Module, ModuleID, Info, Vanilla, Components)
+    public MeteredButton(CruelModkitScript Module, int ModuleID, ComponentInfo Info, byte Components) : base(Module, ModuleID, Info, Components)
     {
         Debug.LogFormat("[The Cruel Modkit #{0}] Solving Metered Button. Press the ❖ button to activate the timer.", ModuleID);
         GenButton();
-        SetMeter(0d);
+        Info.MeterValue = 0d;
+        Module.SetMeter();
+        Debug.LogFormat("[The Cruel Modkit #{0}] Number display is {1}.", ModuleID, Info.NumberDisplay);
 
         finalActions[0] = FindAction();
         Debug.LogFormat("[The Cruel Modkit #{0}] The first action to perform is {1}.", ModuleID, finalActions[0]);
-
+        LogInstruction(finalActions[0]);
     }
 
     public override void OnButtonPress()
@@ -75,6 +78,18 @@ public class MeteredButton : Puzzle
 
         if (Module.IsModuleSolved() || !meterStarted)
             return;
+
+        if (!Module.IsSolving())
+        {
+            if (!Module.CheckValidComponents())
+            {
+                Debug.LogFormat("[The Cruel Modkit #{0}] Strike! The button was pressed when the component selection was [{1}] instead of [{2}].", ModuleID, Module.GetOnComponents(), Module.GetTargetComponents());
+                Module.CauseStrike();
+                return;
+            }
+
+            Module.StartSolve();
+        }
 
         pressTime = Module.Bomb.GetTime();
 
@@ -90,6 +105,9 @@ public class MeteredButton : Puzzle
         if (Module.IsModuleSolved() || !meterStarted)
             return;
 
+        if (!Module.CheckValidComponents())
+            return;
+
         float releaseTime = Module.Bomb.GetTime();
         float heldTime = Mathf.RoundToInt(Math.Abs(pressTime - releaseTime));
 
@@ -100,13 +118,13 @@ public class MeteredButton : Puzzle
         {
             if (heldTime == 0f && lastDigit == actionNum)
             {
-                Debug.LogFormat("[The Cruel Modkit #{0}] Button tapped correctly. Stage {1} passed.", ModuleID, stage+2);
+                Debug.LogFormat("[The Cruel Modkit #{0}] Button was tapped correctly. Stage {1} passed.", ModuleID, stage+2);
                 Module.StartCoroutine(AdvanceStage());
             }
             else
             {
                 Module.CauseStrike();
-                Debug.LogFormat("[The Cruel Modkit #{0}] Strike! Button tapped incorrectly at last digit {1} or button was held.", ModuleID, lastDigit);
+                Debug.LogFormat("[The Cruel Modkit #{0}] Strike! Button was tapped incorrectly at last digit {1} or button was held.", ModuleID, lastDigit);
                 Module.StartCoroutine(Strike());
             }
         }
@@ -116,13 +134,13 @@ public class MeteredButton : Puzzle
             double releaseDigit = Math.Floor(releaseTime % 10);
             if (holdDigit == (actionNum + Module.Bomb.GetBatteryCount()) % 10 && releaseDigit == Math.Abs(actionNum - Module.Bomb.GetPortCount()))
             {
-                Debug.LogFormat("[The Cruel Modkit #{0}] Button held correctly. Stage {1} passed.", ModuleID, stage + 1);
+                Debug.LogFormat("[The Cruel Modkit #{0}] Button was held correctly. Stage {1} passed.", ModuleID, stage + 1);
                 Module.StartCoroutine(AdvanceStage());
             }
             else
             {
                 Module.CauseStrike();
-                Debug.LogFormat("[The Cruel Modkit #{0}] Strike! Button held incorrectly (held on {1}, released on {2}).", ModuleID, holdDigit, releaseDigit);
+                Debug.LogFormat("[The Cruel Modkit #{0}] Strike! Button was held incorrectly (held on {1}, released on {2}).", ModuleID, holdDigit, releaseDigit);
                 Module.StartCoroutine(Strike());
             }
         }
@@ -138,13 +156,13 @@ public class MeteredButton : Puzzle
             if (multiplyNum == 0) multiplyNum = 10;
             if (utilPresses == (multiplyNum * actionNum) % 25)
             {
-                Debug.LogFormat("[The Cruel Modkit #{0}] ❖ button pressed correctly. Stage {1} passed.", ModuleID, stage + 1);
+                Debug.LogFormat("[The Cruel Modkit #{0}] ❖ button was pressed the correct number of times. Stage {1} passed.", ModuleID, stage + 1);
                 Module.StartCoroutine(AdvanceStage());
             }
             else
             {
                 Module.CauseStrike();
-                Debug.LogFormat("[The Cruel Modkit #{0}] Strike! ❖ button pressed incorrect number of times ({1} times).", ModuleID, utilPresses);
+                Debug.LogFormat("[The Cruel Modkit #{0}] Strike! ❖ button was pressed an incorrect number of times ({1} time(s)).", ModuleID, utilPresses);
                 Module.StartCoroutine(Strike());
             }
         }
@@ -186,7 +204,7 @@ public class MeteredButton : Puzzle
     string FindAction()
     {
         int[] colorConverter = { 8, 6, 5, 4, 3, 1, 999, 7, 0, 9, 2 };
-        int table1Num = table1[Array.IndexOf(ComponentInfo.ButtonList, Info.ButtonText), colorConverter[Info.Button]];
+        int table1Num = table1[Array.IndexOf(ButtonList, Info.ButtonText), colorConverter[Info.Button]];
         string table2Action = table2[table1Num, Info.NumberDisplay];
 
         return table2Action;
@@ -198,7 +216,7 @@ public class MeteredButton : Puzzle
 
         if (stage == 3)
         {
-            Debug.LogFormat("[The Cruel Modkit #{0}] Module Solved!", ModuleID);
+            Debug.LogFormat("[The Cruel Modkit #{0}] Module solved.", ModuleID);
             Module.Solve();
             Module.StopCoroutine(tickRoutine);
             yield break;
@@ -206,6 +224,7 @@ public class MeteredButton : Puzzle
 
         animating = true;
         Info.NumberDisplay = Random.Range(0, 10);
+        Debug.LogFormat("[The Cruel Modkit #{0}] Number display is {1}.", ModuleID, Info.NumberDisplay);
         Module.WidgetText[2].text = Info.NumberDisplay.ToString();
         yield return Module.StartCoroutine(Module.HideComponent(CruelModkitScript.ComponentsEnum.Button));
         GenButton();
@@ -213,6 +232,7 @@ public class MeteredButton : Puzzle
 
         finalActions[stage] = FindAction();
         Debug.LogFormat("[The Cruel Modkit #{0}] The next action to perform is {1}.", ModuleID, finalActions[stage]);
+        LogInstruction(finalActions[stage]);
         animating = false;
     }
 
@@ -221,9 +241,11 @@ public class MeteredButton : Puzzle
         stage = 0;
         animating = true;
         Info.NumberDisplay = Random.Range(0, 10);
+        Debug.LogFormat("[The Cruel Modkit #{0}] Number display is {1}.", ModuleID, Info.NumberDisplay);
 
         Module.StopCoroutine(tickRoutine);
-        SetMeter(0);
+        Info.MeterValue = 0d;
+        Module.SetMeter();
         meterStarted = false;
 
         Module.WidgetText[2].text = Info.NumberDisplay.ToString();
@@ -234,26 +256,42 @@ public class MeteredButton : Puzzle
         finalActions = new string[3];
         finalActions[0] = FindAction();
         Debug.LogFormat("[The Cruel Modkit #{0}] The first action to perform is {1}.", ModuleID, finalActions[0]);
+        LogInstruction(finalActions[0]);
         animating = false;
-    }
-
-    void SetMeter(double value)
-    {
-        Info.MeterValue = value;
-        float TempNumber = 0.003882663f * (float)Info.MeterValue; //.00388 is the original Z scale
-        Module.Meter.transform.localScale = new Vector3(0.0005912599f, 0.01419745f, TempNumber);
-        TempNumber = -0.02739999f - ((0.03884f * (1 - (float)Info.MeterValue)) / 2); //-.0273 is the original Z position, .0388 is the original length
-        Module.Meter.transform.localPosition = new Vector3(-0.04243f, 0.01436f, TempNumber);
     }
 
     void GenButton()
     {
-        Info.ButtonText = ComponentInfo.ButtonList[Random.Range(0, 14)];
+        Info.ButtonText = ButtonList[Random.Range(0, 14)];
         int newCol = Random.Range(0, 11);
         while (newCol == 6)  newCol = Random.Range(0, 11);
         Info.Button = newCol;
-        Module.Button.transform.GetComponentInChildren<Renderer>().material = Module.ButtonMats[Info.Button];
-        Module.Button.transform.Find("ButtonText").GetComponentInChildren<TextMesh>().text = Info.ButtonText;
+        Module.SetButton();
+        Debug.LogFormat("[The Cruel Modkit #{0}] Button is {1}.", ModuleID, Info.GetButtonInfo());
+    }
+
+    void LogInstruction(string Instruction)
+    {
+        int InstructionNumber = Convert.ToInt32(Instruction.Substring(1));
+        switch (Instruction[0])
+        {
+            case 'T':
+                Debug.LogFormat("[The Cruel Modkit #{0}] Tap the button when the last digit of the bomb timer is {1}.", ModuleID, InstructionNumber);
+                break;
+            case 'H':
+                int BatteryCount = Module.Bomb.GetBatteryCount();
+                int PortCount = Module.Bomb.GetPortCount();
+                Debug.LogFormat("[The Cruel Modkit #{0}] The battery count is {1} and the port count is {2}.", ModuleID, BatteryCount, PortCount);
+                Debug.LogFormat("[The Cruel Modkit #{0}] Hold the button when the last digit of the bomb timer is {1}, and release when it's {2}.", ModuleID, (InstructionNumber + BatteryCount) % 10, Math.Abs(InstructionNumber - PortCount));
+                break;
+            case 'M':
+                Debug.LogFormat("[The Cruel Modkit #{0}] Mash the button {1} time(s) across 3 seconds.", ModuleID, InstructionNumber);
+                break;
+            case 'X':
+                int LastSerialDigit = Module.Bomb.GetSerialNumberNumbers().Last();
+                Debug.LogFormat("[The Cruel Modkit #{0}] Press the ❖ button {1} time(s), then tap the button.", ModuleID, (InstructionNumber * (LastSerialDigit == 0 ? 10 : LastSerialDigit)) % 25);
+                break;
+        }
     }
 
     IEnumerator MeterRise()
@@ -267,7 +305,8 @@ public class MeteredButton : Puzzle
         while (elapsed < duration)
         {
             meterLevel = Easing.OutQuad(elapsed, 0, 1, duration);
-            SetMeter(meterLevel);
+            Info.MeterValue = meterLevel;
+            Module.SetMeter();
             yield return null;
             elapsed += Time.deltaTime;
         }
@@ -283,12 +322,13 @@ public class MeteredButton : Puzzle
         {
             meterTime -= Time.deltaTime;
             meterLevel = meterTime / 90f;
-            SetMeter(meterLevel);
+            Info.MeterValue = meterLevel;
+            Module.SetMeter();
             yield return null;
         }
 
         meterStarted = false;
-        Debug.LogFormat("[The Cruel Modkit #{0}] Strike! Your time has passed.", ModuleID);
+        Debug.LogFormat("[The Cruel Modkit #{0}] Strike! The meter has ran out.", ModuleID);
         Module.CauseStrike();
         Module.StartCoroutine(Strike());
 
@@ -308,13 +348,13 @@ public class MeteredButton : Puzzle
 
         if (pressedNum == Int32.Parse(finalActions[stage][1].ToString()))
         {
-            Debug.LogFormat("[The Cruel Modkit #{0}] Button mashed correctly. Stage {1} passed.", ModuleID, stage + 1);
+            Debug.LogFormat("[The Cruel Modkit #{0}] Button was mashed the correct number of times. Stage {1} passed.", ModuleID, stage + 1);
             Module.StartCoroutine(AdvanceStage());
         }
         else
         {
             Module.CauseStrike();
-            Debug.LogFormat("[The Cruel Modkit #{0}] Strike! Button mashed incorrectly ({1} times).", ModuleID, pressedNum);
+            Debug.LogFormat("[The Cruel Modkit #{0}] Strike! Button was mashed an incorrect number of times ({1} time(s)).", ModuleID, pressedNum);
             Module.StartCoroutine(Strike());
         }
         pressedNum = 0;

@@ -1,14 +1,8 @@
-﻿using System;
+﻿using KModkit;
+using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Linq;
-using System.Net.NetworkInformation;
-using System.Security.Principal;
 using UnityEngine;
-using KModkit;
-using Random = UnityEngine.Random;
-
-
 
 public class TimerTimings : Puzzle
 {
@@ -18,7 +12,7 @@ public class TimerTimings : Puzzle
         "A + B = a prime number",
         "A > amount of lit indicators, B ≤ amount of unlit indicators",
         "A / B = a whole number",
-        "A and B = a multiple of the module count, excluding needies",
+        "A and B concatenated = a multiple of the module count, excluding needies",
         "The digital root of A + B is odd",
         "A or B matches a digit on the bomb timer",
         "B - Last digit of S# ≤ A",
@@ -27,7 +21,7 @@ public class TimerTimings : Puzzle
         "A and B = the amount of lit or unlit indicators"
     };
 
-    public TimerTimings(CruelModkitScript Module, int ModuleID, ComponentInfo Info, bool Vanilla, byte Components) : base(Module, ModuleID, Info, Vanilla, Components)
+    public TimerTimings(CruelModkitScript Module, int ModuleID, ComponentInfo Info, byte Components) : base(Module, ModuleID, Info, Components)
     {
         Debug.LogFormat("[The Cruel Modkit #{0}] Solving Timer Timings. Press the ❖ button to activate the timer.", ModuleID);
         Debug.LogFormat("[The Cruel Modkit #{0}] Number display is {1}. Correct rule to follow is: \"{2}.\"", ModuleID, Info.NumberDisplay, RuleList[Info.NumberDisplay]);
@@ -70,14 +64,17 @@ public class TimerTimings : Puzzle
         if (Module.IsModuleSolved())
             return;
 
-        if (!Module.CheckValidComponents())
+        if (!Module.IsSolving())
         {
-            Debug.LogFormat("[The Cruel Modkit #{0}] Strike! The ❖ button was pressed when the component selection was [{1}] instead of [{2}].", ModuleID, Module.GetOnComponents(), Module.GetTargetComponents());
-            Module.CauseStrike();
-            return;
-        }
+            if (!Module.CheckValidComponents())
+            {
+                Debug.LogFormat("[The Cruel Modkit #{0}] Strike! The ❖ button was pressed when the component selection was [{1}] instead of [{2}].", ModuleID, Module.GetOnComponents(), Module.GetTargetComponents());
+                Module.CauseStrike();
+                return;
+            }
 
-        Module.StartSolve();
+            Module.StartSolve();
+        }
 
         if (!IsTimerChanging)
         {
@@ -158,17 +155,17 @@ public class TimerTimings : Puzzle
                     }
                     else
                     {
-                        bool Rule3Part1 = A == 0 ? true : (ModuleCount % A) == 0;
-                        bool Rule3Part2 = B == 0 ? true : (ModuleCount % B) == 0;
-                        if (Rule3Part1 && Rule3Part2)
+                        int ConcatenatedValue = int.Parse(A.ToString() + B.ToString());
+                        bool Rule3 = ConcatenatedValue == 0 ? true : (ModuleCount % ConcatenatedValue) == 0;
+                        if (Rule3)
                         {
-                            Debug.LogFormat("[The Cruel Modkit #{0}] Both A and B are multiples of the number of solvable modules. Module solved.", ModuleID);
+                            Debug.LogFormat("[The Cruel Modkit #{0}] A and B concatenated is a multiple of the number of solvable modules. Module solved.", ModuleID);
                             Module.Solve();
                             IsTimerChanging = false;
                         }
                         else
                         {
-                            Debug.LogFormat("[The Cruel Modkit #{0}] Strike! A and/or B are not multiples of the number of solvable modules.", ModuleID);
+                            Debug.LogFormat("[The Cruel Modkit #{0}] Strike! A and B concatenated is not a multiple of the number of solvable modules.", ModuleID);
                             Module.CauseStrike();
                         }
                     }
@@ -292,8 +289,8 @@ public class TimerTimings : Puzzle
     {
         while (IsTimerChanging)
         {
-            Info.TimerDisplay = Random.Range(0, 100000);
-            Module.WidgetText[0].text = Info.TimerDisplay.ToString().PadLeft(5, '0');
+            Info.GenerateTimerInfo();
+            Module.SetTimer();
             yield return new WaitForSeconds(1f);
         }
     }
